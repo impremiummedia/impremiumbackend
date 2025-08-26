@@ -2,6 +2,7 @@ import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
+import fetch from "node-fetch"; 
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
@@ -180,6 +181,27 @@ app.post("/api/login", async (req, res) => {
 // ----------------- TEST ROUTE -----------------
 app.get("/test", (req, res) => {
   res.send("Hello");
+});
+
+// Image download route
+app.get("/download-image", async (req, res) => {
+  const imageUrl = "https://tse2.mm.bing.net/th/id/OIF.htzdSxVEjISXlDPDdO8ARw?pid=Api&P=0&h=220";
+
+  try {
+    // Image fetch karo
+    const response = await fetch(imageUrl);
+    const buffer = await response.buffer();
+
+    // Force download headers set karo
+    res.setHeader("Content-Disposition", "attachment; filename=my-image.jpg");
+    res.setHeader("Content-Type", "image/jpeg");
+
+    // Image bhej do
+    res.send(buffer);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Error downloading image");
+  }
 });
 
 // ----------------- SERVER -----------------
