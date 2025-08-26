@@ -8,6 +8,7 @@ import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import User from "./models/User.js";
 import crypto from "crypto";
+import OpenAI from "openai";
 
 dotenv.config();
 const app = express();
@@ -32,6 +33,11 @@ const transporter = nodemailer.createTransport({
   tls: {
     rejectUnauthorized: false
   }
+});
+
+// Initialize OpenAI client
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY, // set in .env file
 });
 
 // ----------------- SIGNUP (Send OTP) -----------------
@@ -177,6 +183,40 @@ app.post("/api/login", async (req, res) => {
     res.status(500).json({ msg: "Server error" });
   }
 });
+
+// API route
+app.post("/api/generate-post", async (req, res) => {
+  try {
+    const { businessName, industry, targetAudience, platform, toneOfVoice } = req.body;
+
+    if (!businessName || !industry || !targetAudience || !platform || !toneOfVoice) {
+      return res.status(400).json({ error: "All fields are required." });
+    }
+
+    const prompt = `
+    Generate a ${toneOfVoice} social media post for ${platform}.
+    Business: ${businessName}
+    Industry: ${industry}
+    Target Audience: ${targetAudience}
+
+    The post should be engaging, relevant, and suitable for the platform.
+    `;
+
+    const response = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 200,
+    });
+
+    const generatedPost = response.choices[0].message.content.trim();
+
+    res.json({ post: generatedPost });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to generate post." });
+  }
+});
+
 
 // ----------------- TEST ROUTE -----------------
 app.get("/test", (req, res) => {
