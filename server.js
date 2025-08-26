@@ -217,6 +217,40 @@ app.post("/api/generate-post", async (req, res) => {
   }
 });
 
+app.post("/api/generate-post-image", async (req, res) => {
+  try {
+    const { businessName, industry, targetAudience, platform, toneOfVoice } = req.body;
+
+    if (!businessName || !industry || !targetAudience || !platform || !toneOfVoice) {
+      return res.status(400).json({ error: "All fields are required." });
+    }
+
+    const prompt = `
+    Generate a ${toneOfVoice} social media post image concept for ${platform}.
+    Business: ${businessName}
+    Industry: ${industry}
+    Target Audience: ${targetAudience}
+    The image should be engaging, relevant, and suitable for the platform.
+    `;
+
+    const response = await client.images.generate({
+      model: "gpt-image-1",
+      prompt,
+      size: "1024x1024",
+      quality: "high",
+      n: 1,
+    });
+
+    const base64Image = response.data[0].b64_json;
+
+    // Return base64 as a data URI
+    res.json({ image: `data:image/png;base64,${base64Image}` });
+  } catch (err) {
+    console.error("Error generating image:", err);
+    res.status(500).json({ error: "Failed to generate image." });
+  }
+});
+
 
 // ----------------- TEST ROUTE -----------------
 app.get("/test", (req, res) => {
