@@ -233,11 +233,10 @@ app.post("/api/generate-post-image", async (req, res) => {
     The image should be engaging, relevant, and suitable for the platform.
     `;
 
-    const response = await client.images.generate({
-      model: "gpt-image-1",
+   const response = await client.images.generate({
+      model: "dall-e-3",
       prompt,
       size: "1024x1024",
-      quality: "high",
       n: 1,
     });
 
