@@ -266,6 +266,10 @@ app.post("/api/generate-post-image", async (req, res) => {
 app.get("/test", (req, res) => {
   res.send("Hello");
 });
+// ----------------- TEST ROUTE -----------------
+app.get("/tessst", (req, res) => {
+  res.send("Hellhho");
+});
 
 
 // Image download route
