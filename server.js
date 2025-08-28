@@ -216,21 +216,28 @@ app.post("/api/generate-post", async (req, res) => {
     res.status(500).json({ error: "Failed to generate post." });
   }
 });
+let lastGeneratedImage = null; // memory me store karne ke liye
 
 app.post("/api/generate-post-image", async (req, res) => {
   try {
-    const { businessName, industry, targetAudience, platform, toneOfVoice } = req.body;
+    const { businessName, industry, targetAudience, platform, toneOfVoice, color, description } = req.body;
 
-    if (!businessName || !industry || !targetAudience || !platform || !toneOfVoice) {
-      return res.status(400).json({ error: "All fields are required." });
+    // Required fields check
+    if (!businessName || !industry || !targetAudience || !platform || !toneOfVoice || !color || !description) {
+      return res.status(400).json({ error: "All fields are required including description and color." });
     }
 
+    // Prompt including description
     const prompt = `
     Generate a ${toneOfVoice} social media post image concept for ${platform}.
     Business: ${businessName}
     Industry: ${industry}
     Target Audience: ${targetAudience}
-    The image should be engaging, relevant, and suitable for the platform.
+    Preferred Brand Color: ${color}
+    Special Offer / Service: ${description}
+
+    The image should be engaging, relevant, visually appealing and designed using the brand color theme. 
+    Make sure the design highlights the offer/service clearly.
     `;
 
     const response = await client.images.generate({
@@ -243,8 +250,11 @@ app.post("/api/generate-post-image", async (req, res) => {
 
     const base64Image = response.data[0].b64_json;
 
+    lastGeneratedImage = base64Image; // memory me store kar diya
+
     // Return base64 as a data URI
     res.json({ image: `data:image/png;base64,${base64Image}` });
+
   } catch (err) {
     console.error("Error generating image:", err);
     res.status(500).json({ error: "Failed to generate image." });
@@ -257,27 +267,27 @@ app.get("/test", (req, res) => {
   res.send("Hello");
 });
 
+
 // Image download route
-app.get("/download-image", async (req, res) => {
-  const imageUrl = "https://tse2.mm.bing.net/th/id/OIF.htzdSxVEjISXlDPDdO8ARw?pid=Api&P=0&h=220";
-
+app.get("/download-image", (req, res) => {
   try {
-    // Image fetch karo
-    const response = await fetch(imageUrl);
-    const buffer = await response.buffer();
+    if (!lastGeneratedImage) {
+      return res.status(400).send("No image available for download");
+    }
 
-    // Force download headers set karo
-    res.setHeader("Content-Disposition", "attachment; filename=my-image.jpg");
-    res.setHeader("Content-Type", "image/jpeg");
+    // Base64 ko buffer me convert karo
+    const buffer = Buffer.from(lastGeneratedImage, "base64");
 
-    // Image bhej do
+    // Headers set karo for download
+    res.setHeader("Content-Disposition", "attachment; filename=generated-image.png");
+    res.setHeader("Content-Type", "image/png");
+
     res.send(buffer);
   } catch (error) {
     console.error(error);
     res.status(500).send("Error downloading image");
   }
 });
-
 // ----------------- SERVER -----------------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on ${PORT}`));
