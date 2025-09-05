@@ -10,6 +10,7 @@ import User from "./models/User.js";
 import crypto from "crypto";
 import OpenAI from "openai";
 import axios from "axios";
+import https  from 'https'; 
 import { google } from 'googleapis';
 
 dotenv.config();
@@ -412,6 +413,46 @@ app.get("/download-image", (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send("Error downloading image");
+  }
+});
+
+
+
+// / Health Check Endpoint
+app.get('/', (req, res) => {
+  res.send('Shopify Security Checker API running!');
+});
+
+// Security Check Endpoint
+app.post('/check', async (req, res) => {
+  const { url, domain } = req.body;
+  if (!url) return res.status(400).json({ status: 'error', message: 'URL is required' });
+
+  try {
+    // Check if site is reachable
+    // const response = await axios.get(url, { timeout: 5000, httpsAgent: new https.Agent({ rejectUnauthorized: false }) });
+    const response = await axios.get(url, {
+  timeout: 10000, // ⬆️ 5s se 10s kiya
+  maxRedirects: 5, // ⬆️ multiple redirects allow karega (Shopify pe kaam aata hai)
+  httpsAgent: new https.Agent({ rejectUnauthorized: false })
+});
+
+
+    // Check if HTTPS
+    const isHttps = url.startsWith('https://');
+
+    res.json({
+      status: 'secure',
+      message: 'Site is reachable',
+      https: isHttps,
+      domain: domain || null
+    });
+  } catch (error) {
+    res.json({
+      status: 'insecure',
+      message: 'Site not reachable or invalid URL',
+      error: error.message
+    });
   }
 });
 // ----------------- SERVER -----------------
