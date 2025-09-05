@@ -9,9 +9,9 @@ import nodemailer from "nodemailer";
 import User from "./models/User.js";
 import crypto from "crypto";
 import OpenAI from "openai";
-import axios from "axios";
+import axios  from "axios";  
 import https  from 'https'; 
-import { google } from 'googleapis';
+import sslChecker  from "ssl-checker";
 
 dotenv.config();
 const app = express();
@@ -187,6 +187,65 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
+
+// ----------------- FORGOT PASSWORD (Send OTP) -----------------
+app.post("/api/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+
+    if (!user) return res.status(400).json({ msg: "User not found" });
+
+    const otp = Math.floor(100000 + Math.random() * 900000); // 6 digit OTP
+    user.otp = otp;
+    user.otpExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes
+    await user.save();
+
+    await transporter.sendMail({
+      from: `"Imperium Media" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Password Reset OTP - Imperium Media",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: auto; padding: 20px; border-radius: 10px; background: #f9f9f9; border: 1px solid #eee;">
+          <h2 style="color:#004B93; text-align:center;">Password Reset Request</h2>
+          <p style="text-align:center;">Use the OTP below to reset your password:</p>
+          <h3 style="color:#E32934; text-align:center; letter-spacing:3px;">${otp}</h3>
+          <p style="text-align:center; font-size:14px;">This OTP will expire in <b>10 minutes</b>.</p>
+        </div>
+      `
+    });
+
+    res.json({ msg: "Password reset OTP sent to your email." });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: "Server error" });
+  }
+});
+
+
+// ----------------- RESET PASSWORD -----------------
+app.post("/api/reset-password", async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+    const user = await User.findOne({ email });
+
+    if (!user) return res.status(400).json({ msg: "User not found" });
+    if (user.otp != otp) return res.status(400).json({ msg: "Invalid OTP" });
+    if (user.otpExpiry < Date.now()) return res.status(400).json({ msg: "OTP expired. Please request again." });
+
+    const hashPass = await bcrypt.hash(newPassword, 10);
+    user.password = hashPass;
+    user.otp = null;
+    user.otpExpiry = null;
+    await user.save();
+
+    res.json({ msg: "Password reset successful. Please login with new password." });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: "Server error" });
+  }
+});
+
 // API route
 app.post("/api/generate-post", async (req, res) => {
   try {
@@ -264,126 +323,6 @@ app.post("/api/generate-post-image", async (req, res) => {
   }
 });
 
-const CLIENT_ID = "";
-const CLIENT_SECRET = "";
-const REDIRECT_URI = "http://localhost:3000/oauth2callback";
-
-const oauth2Client = new google.auth.OAuth2(
-  CLIENT_ID,
-  CLIENT_SECRET,
-  REDIRECT_URI
-);
-
-// Step 1: Generate the login URL
-app.get("/auth", (req, res) => {
-  const scopes = [
-    "https://www.googleapis.com/auth/business.manage"
-  ];
-
-  const url = oauth2Client.generateAuthUrl({
-    access_type: "offline", // so we get refresh token too
-    scope: scopes,
-  });
-
-  res.redirect(url);
-});
-
-// Step 2: Handle callback after login
-app.get("/oauth2callback", async (req, res) => {
-  const { code } = req.query;
-  const { tokens } = await oauth2Client.getToken(code);
-  oauth2Client.setCredentials(tokens);
-
-  // Save tokens in DB if needed
-  console.log("Access Token:", tokens.access_token);
-  console.log("Refresh Token:", tokens.refresh_token);
-
-  res.send("Authentication successful! You can now call the Business Profile API.");
-});
-app.post("/api/create-post", async (req, res) => {
-  try {
-    const { userToken, prompt, mediaUrl } = req.body;
-
-    if (!userToken || !prompt) {
-      return res.status(400).json({ error: "Missing required fields" });
-    }
-
-    // 1️⃣ Get first account
-    const accountsRes = await axios.get(
-      "https://mybusinessaccountmanagement.googleapis.com/v1/accounts",
-      {
-        headers: { Authorization: `Bearer ${userToken}` },
-      }
-    );
-
-    const account = accountsRes.data.accounts?.[0];
-    if (!account) {
-      return res.status(404).json({ error: "No Google Business accounts found" });
-    }
-
-    const accountId = account.name.split("/")[1];
-
-    // 2️⃣ Get first location from that account
-    const locationsRes = await axios.get(
-      `https://mybusinessbusinessinformation.googleapis.com/v1/accounts/${accountId}/locations`,
-      {
-        headers: { Authorization: `Bearer ${userToken}` },
-      }
-    );
-
-    const location = locationsRes.data.locations?.[0];
-    if (!location) {
-      return res.status(404).json({ error: "No locations found for this account" });
-    }
-
-    const locationId = location.name.split("/")[3];
-
-    // 3️⃣ Generate AI content
-    const aiResponse = await client.chat.completions.create({
-      model: "gpt-4.1-mini",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
-    });
-
-    const postContent = aiResponse.choices[0].message.content;
-
-    // 4️⃣ Create Google Business post
-    const url = `https://mybusiness.googleapis.com/v4/accounts/${accountId}/locations/${locationId}/localPosts`;
-
-    const payload = {
-      summary: postContent,
-      callToAction: {
-        actionType: "LEARN_MORE",
-        url: "https://yourbusiness.com",
-      },
-      topicType: "STANDARD",
-    };
-
-    if (mediaUrl) {
-      payload.media = [{ mediaFormat: "PHOTO", sourceUrl: mediaUrl }];
-    }
-
-    const response = await axios.post(url, payload, {
-      headers: {
-        Authorization: `Bearer ${userToken}`,
-        "Content-Type": "application/json",
-      },
-    });
-
-    res.json({
-      success: true,
-      accountId,
-      locationId,
-      postData: response.data,
-    });
-  } catch (error) {
-    console.error("Error creating GBP post:", error.response?.data || error.message);
-    res.status(500).json({
-      error: "Something went wrong",
-      details: error.response?.data || error.message,
-    });
-  }
-});
 
 // ----------------- TEST ROUTE -----------------
 app.get("/test", (req, res) => {
@@ -393,6 +332,8 @@ app.get("/test", (req, res) => {
 app.get("/tessst", (req, res) => {
   res.send("Hellhho");
 });
+
+
 
 
 // Image download route
@@ -415,6 +356,7 @@ app.get("/download-image", (req, res) => {
     res.status(500).send("Error downloading image");
   }
 });
+
 
 
 
@@ -455,6 +397,23 @@ app.post('/check', async (req, res) => {
     });
   }
 });
+
+
+// SSL Check API
+app.post("/check-ssl", async (req, res) => {
+  const { domain } = req.body;
+  if (!domain) {
+    return res.status(400).json({ error: "Domain is required" });
+  }
+
+  try {
+    const sslDetails = await sslChecker(domain, { method: "GET", port: 443 });
+    res.json({ success: true, ssl: sslDetails });
+  } catch (error) {
+    res.json({ success: false, message: "SSL check failed", error: error.message });
+  }
+});
+
 // ----------------- SERVER -----------------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on ${PORT}`));
