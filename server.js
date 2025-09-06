@@ -413,7 +413,40 @@ app.post("/check-ssl", async (req, res) => {
     res.json({ success: false, message: "SSL check failed", error: error.message });
   }
 });
+let uptimeData = {
+  totalChecks: 0,
+  successChecks: 0,
+};
+app.post("/check-health", async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ error: "URL required" });
 
+    uptimeData.totalChecks++;
+
+    const start = Date.now();
+    const response = await fetch(url, { method: "GET" });
+    const end = Date.now();
+
+    const responseTime = end - start;
+
+    if (response.ok) {
+      uptimeData.successChecks++;
+    }
+
+    const uptimePercentage =
+      uptimeData.totalChecks > 0
+        ? ((uptimeData.successChecks / uptimeData.totalChecks) * 100).toFixed(2)
+        : "0";
+
+    res.json({
+      uptime: uptimePercentage,
+      responseTime,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch URL" });
+  }
+});
 // ----------------- SERVER -----------------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on ${PORT}`));
