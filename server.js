@@ -12,6 +12,7 @@ import OpenAI from "openai";
 import axios  from "axios";  
 import https  from 'https'; 
 import sslChecker  from "ssl-checker";
+import * as cheerio from "cheerio";  
 
 dotenv.config();
 const app = express();
@@ -447,6 +448,141 @@ app.post("/check-health", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch URL" });
   }
 });
+
+// 1. Shopify-Specific
+app.get("/api/shopify-summary", async (req, res) => {
+  const { domain } = req.query;
+  if (!domain) return res.status(400).json({ error: "Domain required" });
+
+  try {
+    const response = await fetch(`https://${domain}`);
+    const html = await response.text();
+
+    // Detect common Shopify apps
+   const detectionRules = [
+  { name: "Shopify CDN", keyword: "shopifycdn.com" },
+  { name: "Shopify Assets", keyword: "cdn.shopify.com" },
+  { name: "Klaviyo", keyword: "klaviyo" },
+  { name: "Google Analytics", keyword: "gtag/js" },
+  { name: "Google Tag Manager", keyword: "googletagmanager.com" },
+  { name: "Facebook Pixel", keyword: "facebook.net" },
+  { name: "TikTok Pixel", keyword: "tiktokglobal" },
+  { name: "Judge.me Reviews", keyword: "judge.me" },
+  { name: "Yotpo Reviews", keyword: "yotpo.com" },
+  { name: "Loox Reviews", keyword: "loox.io" },
+  { name: "Okendo Reviews", keyword: "okendo.io" },
+  { name: "Intercom Chat", keyword: "intercom.com" },
+  { name: "Crisp Chat", keyword: "crisp.chat" },
+  { name: "Tawk.to Live Chat", keyword: "tawk.to" },
+  { name: "Hotjar Analytics", keyword: "hotjar.com" },
+  { name: "Privy Popups", keyword: "privy.com" },
+  { name: "Sezzle Payments", keyword: "sezzle" },
+  { name: "Afterpay", keyword: "afterpay" },
+  { name: "PayPal Checkout", keyword: "paypal.com" },
+  { name: "Stripe Payments", keyword: "stripe.com" },
+  { name: "Bold Commerce Apps", keyword: "boldcommerce.com" },
+  { name: "Recharge Subscriptions", keyword: "rechargepayments" }
+];
+// Detect apps inline
+    const detectedApps = detectionRules
+      .filter(rule => html.includes(rule.keyword))
+      .map(rule => rule.name);
+
+    // Check admin access
+    let adminExposed = false;
+    try {
+      const adminResp = await fetch(`https://${domain}/admin`, { method: "GET" });
+      if (adminResp.status === 200) adminExposed = true;
+    } catch (err) {}
+
+    res.json({
+      domain,
+      shopifyApps: detectedApps,
+      themeLastUpdated: "Public data not available without store API",
+      adminPanelExposed: adminExposed,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch domain" });
+  }
+});
+
+// 2. Domain & Network Security
+app.get("/api/domain-security", async (req, res) => {
+  const { domain } = req.query;
+  if (!domain) return res.status(400).json({ error: "Domain required" });
+
+  try {
+    // Nameservers
+    let nameservers = [];
+    try {
+      nameservers = await dns.resolveNs(domain);
+    } catch {}
+
+    // DNSSEC check via Google DNS Resolver API
+    let dnssecEnabled = false;
+    try {
+      const dnsRes = await fetch(
+        `https://dns.google/resolve?name=${domain}&type=A`
+      );
+      const dnsData = await dnsRes.json();
+      dnssecEnabled = dnsData.AD === true;
+    } catch {}
+
+    // Subdomain scan (basic brute-force for demo)
+    const commonSubs = ["shop", "admin", "test", "dev"];
+    const foundSubs = [];
+    for (const sub of commonSubs) {
+      try {
+        const records = await dns.resolve(`${sub}.${domain}`);
+        if (records) foundSubs.push(`${sub}.${domain}`);
+      } catch {}
+    }
+
+    // IP reputation (VirusTotal API example - free key needed)
+    let ipReputation = "Unknown";
+    try {
+      const ip = (await dns.resolve4(domain))[0];
+      ipReputation = `Check VirusTotal API for ${ip}`;
+    } catch {}
+
+    res.json({
+      domain,
+      nameservers,
+      dnssecEnabled,
+      subdomains: foundSubs,
+      ipReputation,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Domain check failed" });
+  }
+});
+
+// 3. Security Score & Monitoring
+app.get("/api/security-score", async (req, res) => {
+  const { domain } = req.query;
+  if (!domain) return res.status(400).json({ error: "Domain required" });
+
+  try {
+    // Random score (0-100) for demo
+    const score = Math.floor(Math.random() * 100);
+
+    // Threat Intel (stub - real APIs like HIBP or AbuseIPDB required)
+    const threatIntel = "No known breaches (demo data)";
+
+    // File integrity monitoring - not possible without access
+    const fileMonitoring = "Not supported without store connection";
+
+    res.json({
+      domain,
+      securityScore: score,
+      threatIntel,
+      fileMonitoring,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Security scoring failed" });
+  }
+});
+
 // ----------------- SERVER -----------------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on ${PORT}`));
