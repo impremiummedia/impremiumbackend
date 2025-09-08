@@ -8,11 +8,15 @@ import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import User from "./models/User.js";
 import crypto from "crypto";
-import OpenAI from "openai";
+import OpenAI, { toFile } from "openai";
 import axios  from "axios";  
 import https  from 'https'; 
 import sslChecker  from "ssl-checker";
 import * as cheerio from "cheerio";  
+import multer from "multer";
+import fs from "fs";
+import path from "path";
+
 
 dotenv.config();
 const app = express();
@@ -40,9 +44,30 @@ const transporter = nodemailer.createTransport({
 });
 
 // Initialize OpenAI client
-const client = new OpenAI({
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY, // set in .env file
 });
+
+// File upload setup
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, "uploads/"),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `logo-${Date.now()}${ext}`);
+  },
+});
+
+
+function fileFilter(req, file, cb) {
+  const allowed = ["image/png", "image/jpeg", "image/webp"];
+  if (allowed.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error("Only PNG, JPG, or WebP images are allowed"), false);
+  }
+}
+
+const upload = multer({ storage, fileFilter });
 
 // ----------------- SIGNUP (Send OTP) -----------------
 app.post("/api/signup", async (req, res) => {
@@ -281,7 +306,7 @@ app.post("/api/generate-post", async (req, res) => {
 });
 let lastGeneratedImage = null; // memory me store karne ke liye
 
-app.post("/api/generate-post-image", async (req, res) => {
+app.post("/api/generate-post-image", upload.single("logo"), async (req, res) => {
   try {
     const { businessName, industry, targetAudience, platform, toneOfVoice, color, description } = req.body;
 
@@ -291,7 +316,7 @@ app.post("/api/generate-post-image", async (req, res) => {
     }
 
     // Prompt including description
-    const prompt = `
+    let prompt = `
     Generate a ${toneOfVoice} social media post image concept for ${platform}.
     Business: ${businessName}
     Industry: ${industry}
@@ -299,21 +324,78 @@ app.post("/api/generate-post-image", async (req, res) => {
     Preferred Brand Color: ${color}
     Special Offer / Service: ${description}
 
-    The image should be engaging, relevant, visually appealing and designed using the brand color theme. 
-    Make sure the design highlights the offer/service clearly.
+    The image should be engaging, relevant, visually appealing, designed using the brand color theme.
     `;
 
-    const response = await client.images.generate({
-      model: "gpt-image-1",
-      prompt,
-      size: "1024x1024",
-      quality: "high",
-      n: 1,
-    });
+    // If logo is uploaded, modify prompt to integrate it
+    if (req.file) {
+      prompt += `
+      
+      IMPORTANT: Incorporate the provided logo image naturally into the design. The logo should be:
+      - Positioned prominently but not overwhelmingly (top corner, bottom corner, or integrated into the design)
+      - Properly sized to maintain brand visibility
+      - Blended seamlessly with the overall design aesthetic
+      - Maintain the logo's original proportions and clarity
+      `;
+    }
+
+    let response;
+
+    if (req.file) {
+      // Validate file type
+      const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+      let mimeType = req.file.mimetype;
+      
+      // If mimetype is not detected, try to determine from file extension
+      if (!mimeType || mimeType === 'application/octet-stream') {
+        const ext = path.extname(req.file.originalname).toLowerCase();
+        const mimeMap = {
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.png': 'image/png',
+          '.webp': 'image/webp'
+        };
+        mimeType = mimeMap[ext];
+      }
+      
+      if (!allowedMimeTypes.includes(mimeType)) {
+        return res.status(400).json({ 
+          error: "Unsupported file format. Please upload JPEG, PNG, or WebP images only." 
+        });
+      }
+
+      // Use toFile utility to properly handle the image with correct MIME type
+      const imageFile = await toFile(fs.createReadStream(req.file.path), req.file.originalname, {
+        type: mimeType,
+      });
+
+      // Generate new image with logo integration using edit mode
+      response = await openai.images.edit({
+        model: "gpt-image-1",
+        prompt,
+        image: imageFile,
+        size: "1024x1024",
+        n: 1
+      });
+
+      // Delete uploaded file after using it
+      fs.unlink(req.file.path, (err) => {
+        if (err) console.error("Failed to delete temp file:", err);
+      });
+    } else {
+      // Fallback: text-to-image
+      response = await openai.images.generate({
+        model: "gpt-image-1",
+        prompt,
+        size: "1024x1024",
+        quality: "high",
+        n: 1,
+      });
+    }
 
     const base64Image = response.data[0].b64_json;
 
-    lastGeneratedImage = base64Image; // memory me store kar diya
+    lastGeneratedImage = base64Image; // stored in memory
 
     // Return base64 as a data URI
     res.json({ image: `data:image/png;base64,${base64Image}` });
