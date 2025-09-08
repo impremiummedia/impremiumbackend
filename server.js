@@ -369,10 +369,25 @@ app.post("/api/generate-post-image", upload.single("logo"), async (req, res) => 
         type: mimeType,
       });
 
-      // Generate new image with logo integration using edit mode
+      // Create a social media background around/behind the uploaded logo
+      const editPrompt = `
+      Transform this logo into a complete ${toneOfVoice} social media post for ${platform}.
+      
+      KEEP THE ORIGINAL LOGO INTACT AND VISIBLE.
+      
+      Add around the logo:
+      - ${toneOfVoice} background design in ${color} brand colors
+      - ${industry} themed background elements
+      - Text space for "${description}"
+      - Social media post layout suitable for ${targetAudience}
+      - Professional ${platform} post design
+      
+      The original logo should remain clearly visible and prominent, but surrounded by engaging social media post elements.
+      `;
+
       response = await openai.images.edit({
         model: "gpt-image-1",
-        prompt,
+        prompt: editPrompt,
         image: imageFile,
         size: "1024x1024",
         n: 1
