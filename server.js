@@ -13,6 +13,9 @@ import axios  from "axios";
 import https  from 'https'; 
 import sslChecker  from "ssl-checker";
 import * as cheerio from "cheerio";  
+import projectRoutes from "./routes/projectRoutes.js";
+import taskRoutes from "./routes/taskRoutes.js";
+
 
 dotenv.config();
 const app = express();

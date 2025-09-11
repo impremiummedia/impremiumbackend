@@ -4,7 +4,8 @@ import User from "../models/User.js";
 // Employer creates a project
 export const createProject = async (req, res) => {
   try {
-    const { title, description, employerId } = req.body;
+    const { title, description } = req.body;
+    const employerId = req.user.id;
 
     const employer = await User.findById(employerId);
     if (!employer || employer.role !== "employer") {
