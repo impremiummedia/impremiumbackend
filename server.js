@@ -44,6 +44,11 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY, // set in .env file
 });
 
+// Routes
+app.use("/api/projects", projectRoutes);
+app.use("/api/tasks", taskRoutes);
+
+
 // ----------------- SIGNUP (Send OTP) -----------------
 app.post("/api/signup", async (req, res) => {
   try {
