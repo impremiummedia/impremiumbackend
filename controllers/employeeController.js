@@ -28,7 +28,7 @@ export const createEmployee = async (req, res) => {
     await employee.save();
 
     // Link employer ↔ employee
-    await EmployerEmployee.create({ employerId: employerId, employeeId: employee._id });
+    await EmployerEmployee.create({ employer: employerId, employee: employee._id });
 
     res.json({ msg: "Employee created successfully", employee });
   } catch (err) {
@@ -42,7 +42,8 @@ export const getEmployees = async (req, res) => {
   try {
     const employerId = req.user.id;
 
-    const employees = await EmployerEmployee.find({ employer: employerId }).populate("employee", "name email");
+    const employees = await EmployerEmployee.find({ employer: employerId })
+      .populate("employee", "name email"); 
 
     res.json({ employees });
   } catch (err) {
