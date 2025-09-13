@@ -5,9 +5,9 @@ const taskSchema = new mongoose.Schema({
   description: String,
   deadline: Date,
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: "Project", required: true },
-  assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true }, // Employee
+  assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // Employee
   completion: { type: Number, default: 0 }, // % done
-  status: { type: String, enum: ["To Do", "In Progress", "Done"], default: "To Do" },
+  status: { type: String, enum: ["PENDING", "IN_PROGRESS", "DONE"], default: "PENDING" },
   feedback: String, // Employer feedback
 }, { timestamps: true });
 
