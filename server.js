@@ -13,6 +13,9 @@ import axios  from "axios";
 import https  from 'https'; 
 import sslChecker  from "ssl-checker";
 import * as cheerio from "cheerio";  
+import projectRoutes from "./routes/projectRoutes.js";
+import taskRoutes from "./routes/taskRoutes.js";
+import employeeRoutes from "./routes/employeeRoutes.js"
 
 dotenv.config();
 const app = express();
@@ -43,6 +46,12 @@ const transporter = nodemailer.createTransport({
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY, // set in .env file
 });
+
+// Routes
+app.use("/api/projects", projectRoutes);
+app.use("/api/tasks", taskRoutes);
+app.use("/api/employees", employeeRoutes)
+
 
 // ----------------- SIGNUP (Send OTP) -----------------
 app.post("/api/signup", async (req, res) => {
@@ -179,7 +188,8 @@ app.post("/api/login", async (req, res) => {
       user: {
         id: user._id,
         name: user.name,
-        email: user.email
+        email: user.email,
+        role: user.role
       }
     });
   } catch (err) {
