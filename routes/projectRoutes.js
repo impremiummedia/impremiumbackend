@@ -11,7 +11,7 @@ const router = express.Router();
 
 // Employer only
 router.post("/", authMiddleware, requireRole("employer"), createProject);
-router.get("/:employerId", authMiddleware, requireRole("employer"), getEmployerProjects);
+router.get("/", authMiddleware, requireRole("employer"), getEmployerProjects);
 router.post("/:projectId/client-link", authMiddleware, requireRole("employer"), generateClientLink);
 
 // Client view (public, no login required)

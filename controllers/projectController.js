@@ -24,7 +24,7 @@ export const createProject = async (req, res) => {
 // Get all projects for an employer
 export const getEmployerProjects = async (req, res) => {
   try {
-    const { employerId } = req.params;
+    const employerId  = req.user.id;
     const projects = await Project.find({ createdBy: employerId });
     res.json(projects);
   } catch (err) {
