@@ -15,7 +15,7 @@ import sslChecker  from "ssl-checker";
 import * as cheerio from "cheerio";  
 import projectRoutes from "./routes/projectRoutes.js";
 import taskRoutes from "./routes/taskRoutes.js";
-
+import employeeRoutes from "./routes/employeeRoutes.js"
 
 dotenv.config();
 const app = express();
@@ -50,6 +50,7 @@ const client = new OpenAI({
 // Routes
 app.use("/api/projects", projectRoutes);
 app.use("/api/tasks", taskRoutes);
+app.use("/api/employees", employeeRoutes)
 
 
 // ----------------- SIGNUP (Send OTP) -----------------
