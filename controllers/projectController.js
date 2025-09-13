@@ -1,4 +1,5 @@
 import Project from "../models/Project.js";
+import Task from "../models/Task.js";
 import User from "../models/User.js";
 
 // Employer creates a project
@@ -58,3 +59,29 @@ export const getClientView = async (req, res) => {
     res.status(500).json({ msg: "Server error" });
   }
 };
+
+// ----------------- GET PROJECTS WHERE EMPLOYEE HAS TASKS -----------------
+export const getEmployeeProjects = async (req, res) => {
+  try {
+    const employeeId = req.user.id; // ✅ from auth middleware (logged-in user)
+
+    // Step 1: Find all tasks assigned to this employee
+    const tasks = await Task.find({ assignedTo: employeeId }).select("projectId");
+
+    if (!tasks.length) {
+      return res.json({ msg: "No projects found", projects: [] });
+    }
+
+    // Step 2: Extract unique project IDs
+    const projectIds = [...new Set(tasks.map((task) => task.projectId.toString()))];
+
+    // Step 3: Fetch projects by IDs
+    const projects = await Project.find({ _id: { $in: projectIds } });
+
+    res.json({ projects });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: "Server error" });
+  }
+};
+

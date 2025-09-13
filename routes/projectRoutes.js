@@ -3,7 +3,8 @@ import {
   createProject,
   getEmployerProjects,
   generateClientLink,
-  getClientView
+  getClientView,
+  getEmployeeProjects
 } from "../controllers/projectController.js";
 import { authMiddleware, requireRole } from "../middleware/authMiddleware.js";
 
@@ -16,5 +17,8 @@ router.post("/:projectId/client-link", authMiddleware, requireRole("employer"), 
 
 // Client view (public, no login required)
 router.get("/client/:projectId", getClientView);
+
+//Employee only
+router.get("/me/employee-projects", authMiddleware, requireRole("employee"), getEmployeeProjects);
 
 export default router;
