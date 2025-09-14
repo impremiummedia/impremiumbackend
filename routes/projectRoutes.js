@@ -4,6 +4,7 @@ import {
   getEmployerProjects,
   generateClientLink,
   getClientView,
+  deleteProject,
   getEmployeeProjects
 } from "../controllers/projectController.js";
 import { authMiddleware, requireRole } from "../middleware/authMiddleware.js";
@@ -14,6 +15,7 @@ const router = express.Router();
 router.post("/", authMiddleware, requireRole("employer"), createProject);
 router.get("/", authMiddleware, requireRole("employer"), getEmployerProjects);
 router.post("/:projectId/client-link", authMiddleware, requireRole("employer"), generateClientLink);
+router.delete("/:projectId", authMiddleware, requireRole("employer"), deleteProject);
 
 // Client view (public, no login required)
 router.get("/client/:projectId", getClientView);
