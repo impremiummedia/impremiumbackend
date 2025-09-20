@@ -4,7 +4,6 @@ import dotenv from "dotenv";
 import cors from "cors";
 import fetch from "node-fetch"; 
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import User from "./models/User.js";
 import crypto from "crypto";
@@ -17,6 +16,9 @@ import projectRoutes from "./routes/projectRoutes.js";
 import taskRoutes from "./routes/taskRoutes.js";
 import gamificationRoutes from './routes/gamificationRoutes.js';
 import employeeRoutes from "./routes/employeeRoutes.js"
+import UserXP from "./models/UserXP.js";
+import Streak from "./models/Streak.js";
+import { generateToken } from "./utils/common.js";
 
 dotenv.config();
 const app = express();
@@ -164,41 +166,81 @@ app.post("/api/resend-otp", async (req, res) => {
 
 // ----------------- LOGIN -----------------
 app.post("/api/login", async (req, res) => {
-  try {
+try {
     const { email, password } = req.body;
+
+    // 1. Find user
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ msg: "User not found" });
-
-    const match = await bcrypt.compare(password, user.password);
-    if (!match) return res.status(400).json({ msg: "Invalid credentials" });
-
-    if (!user.isVerified) {
-      return res.status(400).json({ msg: "Please verify your email first" });
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(400).json({ msg: "Invalid credentials" });
     }
 
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "1d" }
-    );
+    // 2. Update streak
+    let streak = await Streak.findOne({ userId: user._id });
+    const today = new Date();
+    if (!streak) {
+      streak = new Streak({ userId: user._id, currentStreak: 1, lastLoginAt: today });
+    } else {
+      const lastLogin = new Date(streak.lastLoginAt);
+      const diffDays = Math.floor((today - lastLogin) / (1000 * 60 * 60 * 24));
 
-    // ✅ Send user info in response
-    res.json({
-      msg: "Login successful",
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role
+      if (diffDays === 1) {
+        streak.currentStreak += 1; // continued streak
+      } else if (diffDays > 1) {
+        streak.currentStreak = 1; // reset
       }
+      streak.lastLoginAt = today;
+
+      if (streak.currentStreak > streak.longestStreak) {
+        streak.longestStreak = streak.currentStreak;
+      }
+    }
+    await streak.save();
+
+    // 3. Add XP for login
+    let userXP = await UserXP.findOne({ userId: user._id });
+    if (!userXP) {
+      userXP = new UserXP({ userId: user._id, xp: 0, level: 0 });
+    }
+    userXP.xp += 5; // ✅ small XP for login
+    userXP.lastUpdated = today;
+    userXP.level = Math.floor(userXP.xp / 100); // example formula
+    await userXP.save();
+
+    // 4. (Optional) Check streak achievements
+    if ([3, 7, 30].includes(streak.currentStreak)) {
+      const achievement = await Achievement.findOne({ key: `streak_${streak.currentStreak}` });
+      if (achievement) {
+        const alreadyEarned = await UserAchievement.findOne({
+          userId: user._id,
+          achievementId: achievement._id,
+        });
+        if (!alreadyEarned) {
+          await new UserAchievement({
+            userId: user._id,
+            achievementId: achievement._id,
+            sourceEvent: "login_streak",
+          }).save();
+
+          // also give extra XP
+          userXP.xp += achievement.xp;
+          await userXP.save();
+        }
+      }
+    }
+
+    // 5. Send response
+    res.json({
+      token: generateToken(user._id),
+      user,
+      xp: userXP,
+      streak,
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ msg: "Server error" });
   }
 });
-
 
 // ----------------- FORGOT PASSWORD (Send OTP) -----------------
 app.post("/api/forgot-password", async (req, res) => {
