@@ -19,8 +19,8 @@ export const getUserXp = async (req, res) => {
 export const getUserAchievements = async (req, res) => {
   try {
     const achievements = await UserAchievement
-      .find({ userId: req.user._id })
-      .populate("achievementId");
+      .find({ user: req.user._id })
+      .populate("achievement");
     res.json(achievements);
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -19,6 +19,9 @@ import employeeRoutes from "./routes/employeeRoutes.js"
 import UserXP from "./models/UserXP.js";
 import Streak from "./models/Streak.js";
 import { generateToken } from "./utils/common.js";
+import { ACHIEVEMENT_ACTION } from "./constants/achievementsAction.js";
+import UserAchievement from "./models/UserAchievement.js";
+import Achievement from "./models/Achievement.js";
 
 dotenv.config();
 const app = express();
@@ -212,13 +215,13 @@ try {
       const achievement = await Achievement.findOne({ key: `streak_${streak.currentStreak}` });
       if (achievement) {
         const alreadyEarned = await UserAchievement.findOne({
-          userId: user._id,
-          achievementId: achievement._id,
+          user: user._id,
+          achievement: achievement._id,
         });
         if (!alreadyEarned) {
           await new UserAchievement({
-            userId: user._id,
-            achievementId: achievement._id,
+            user: user._id,
+            achievement: achievement._id,
             sourceEvent: "login_streak",
           }).save();
 
@@ -226,6 +229,20 @@ try {
           userXP.xp += achievement.xp;
           await userXP.save();
         }
+      }
+    }
+
+    // Inside login success
+    const achievement = await Achievement.findOne({ key: ACHIEVEMENT_ACTION.FIRST_LOGIN });
+    if (achievement) {
+      const already = await UserAchievement.findOne({ user: user._id, achievement: achievement._id });
+      if (!already) {
+        await UserAchievement.create({
+          user: user._id,
+          achievement: achievement._id,
+          awardedAt: new Date(),
+          sourceEvent: "login"
+        });
       }
     }
 
