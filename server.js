@@ -19,8 +19,8 @@ import employeeRoutes from "./routes/employeeRoutes.js"
 import { generateToken } from "./utils/common.js";
 import { ACHIEVEMENT_ACTION } from "./constants/achievementsAction.js";
 import { awardAchievement } from "./controllers/userAchievementController.js";
-import { addXP } from "./controllers/UserXPController.js";
 import { updateStreak } from "./controllers/streakController.js";
+import { addXP } from "./controllers/userXPController.js";
 
 dotenv.config();
 const app = express();
