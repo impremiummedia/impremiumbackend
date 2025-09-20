@@ -16,11 +16,12 @@ import projectRoutes from "./routes/projectRoutes.js";
 import taskRoutes from "./routes/taskRoutes.js";
 import gamificationRoutes from './routes/gamificationRoutes.js';
 import employeeRoutes from "./routes/employeeRoutes.js"
-import { generateToken } from "./utils/common.js";
+import { generateToken, getLevelFromXp } from "./utils/common.js";
 import { ACHIEVEMENT_ACTION } from "./constants/achievementsAction.js";
 import { awardAchievement } from "./controllers/userAchievementController.js";
 import { addXP } from "./controllers/userXPController.js";
 import { updateStreak } from "./controllers/streakController.js";
+import { initializeQuests } from "./controllers/questController.js";
 
 dotenv.config();
 const app = express();
@@ -60,7 +61,7 @@ app.use('/api/gamification', gamificationRoutes);
 
 // ----------------- SIGNUP (Send OTP) -----------------
 app.post("/api/signup", async (req, res) => {
-  try {
+try {
     const { name, email, password } = req.body;
     if (!name || !email || !password) {
       return res.status(400).json({ msg: "All fields required" });
@@ -78,38 +79,49 @@ app.post("/api/signup", async (req, res) => {
       password: hashPass,
       otp,
       otpExpiry: Date.now() + 10 * 60 * 1000, // 10 min expiry
-      isVerified: false
+      isVerified: false,
     });
 
     await user.save();
 
-    // Send OTP email with clean UI
-await transporter.sendMail({
-  from: `"Imperium Media" <${process.env.EMAIL_USER}>`,
-  to: email,
-  subject: "Verify your email - Imperium Media",
-  html: `
-  <div style="font-family: Arial, sans-serif; max-width: 500px; margin: auto; border: 1px solid #eee; border-radius: 10px; padding: 20px; background: #f9f9f9;">
-    <div style="text-align: center; margin-bottom: 20px;">
-      <h2 style="color: #004B93; margin: 0;">Imperium Media</h2>
-      <p style="color: #666; margin: 5px 0;">Email Verification</p>
-    </div>
+    // Send OTP email
+    await transporter.sendMail({
+      from: `"Imperium Media" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Verify your email - Imperium Media",
+      html: `
+      <div style="font-family: Arial, sans-serif; max-width: 500px; margin: auto; border: 1px solid #eee; border-radius: 10px; padding: 20px; background: #f9f9f9;">
+        <div style="text-align: center; margin-bottom: 20px;">
+          <h2 style="color: #004B93; margin: 0;">Imperium Media</h2>
+          <p style="color: #666; margin: 5px 0;">Email Verification</p>
+        </div>
+        <div style="background: #fff; padding: 20px; border-radius: 8px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+          <h3 style="color: #333;">Your OTP Code</h3>
+          <p style="font-size: 20px; letter-spacing: 3px; font-weight: bold; color: #E32934; margin: 10px 0;">${otp}</p>
+          <p style="color: #666; font-size: 14px;">This OTP is valid for <b>10 minutes</b>. Please do not share it with anyone.</p>
+        </div>
+        <div style="text-align: center; margin-top: 20px; font-size: 12px; color: #999;">
+          <p>© ${new Date().getFullYear()} Imperium Media. All rights reserved.</p>
+        </div>
+      </div>
+      `
+    });
 
-    <div style="background: #fff; padding: 20px; border-radius: 8px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-      <h3 style="color: #333;">Your OTP Code</h3>
-      <p style="font-size: 20px; letter-spacing: 3px; font-weight: bold; color: #E32934; margin: 10px 0;">${otp}</p>
-      <p style="color: #666; font-size: 14px;">This OTP is valid for <b>10 minutes</b>. Please do not share it with anyone.</p>
-    </div>
+    // --- Initialize gamification ---
+    await initializeQuests(user._id); // assign default quests
+    await addXP(user._id, 10); // give initial XP for signup
+    await awardAchievement(user._id, ACHIEVEMENT_ACTION.ONBOARDING_MASTER, "signup"); // optional onboarding achievement
 
-    <div style="text-align: center; margin-top: 20px; font-size: 12px; color: #999;">
-      <p>© ${new Date().getFullYear()} Imperium Media. All rights reserved.</p>
-    </div>
-  </div>
-  `
-});
-
-
-    res.json({ msg: "OTP sent to your email. Please verify." });
+    // Response
+    res.json({
+      msg: "Signup successful. OTP sent to email.",
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ msg: "Server error" });
@@ -181,19 +193,33 @@ try {
     const streak = await updateStreak(user._id);
 
     // 3. Add XP for login
-    const userXP = await addXP(user._id, 5);
+    const userXP = await addXP(user._id, 5); // small XP for logging in
+    const levelInfo = getLevelFromXp(userXP.xp);
 
     // 4. Award achievements
     await awardAchievement(user._id, ACHIEVEMENT_ACTION.FIRST_LOGIN, "login");
-    if ([3, 7, 30].includes(streak.currentStreak)) {
-      await awardAchievement(user._id, `streak_${streak.currentStreak}`, "login_streak");
+
+    const streakMap = {
+      3: ACHIEVEMENT_ACTION.STREAK_3,
+      7: ACHIEVEMENT_ACTION.STREAK_7,
+      30: ACHIEVEMENT_ACTION.STREAK_30,
+    };
+
+    if (streakMap[streak.currentStreak]) {
+      await awardAchievement(user._id, streakMap[streak.currentStreak], "login_streak");
     }
 
-    // 5. Respond
+    // 5. Send response
     res.json({
       token: generateToken(user._id),
-      user,
-      xp: userXP,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+      xp: userXP.xp,
+      level: levelInfo,
       streak,
     });
   } catch (err) {

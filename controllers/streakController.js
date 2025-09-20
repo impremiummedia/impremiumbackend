@@ -1,5 +1,29 @@
 import Streak from "../models/Streak.js";
 
+/**
+ * Initialize streak for a user
+ * If streak exists, return it; else create new
+ * @param {ObjectId} userId
+ * @returns {Promise<Streak>}
+ */
+export const initializeStreak = async (userId) => {
+  let streak = await Streak.findOne({ userId });
+  const today = new Date();
+
+  if (!streak) {
+    streak = new Streak({
+      userId,
+      currentStreak: 0, // new users start with 0
+      lastLoginAt: null,
+      longestStreak: 0,
+    });
+    await streak.save();
+  }
+
+  return streak;
+};
+
+
 export const updateStreak = async (userId) => {
   const today = new Date();
   let streak = await Streak.findOne({ userId });

@@ -6,6 +6,7 @@ import {
   getUserStreak,
 } from "../controllers/gamificationController.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
+import { getUserRewards } from "../controllers/rewardController.js";
 
 const router = express.Router();
 
@@ -14,5 +15,6 @@ router.get("/xp", authMiddleware, getUserXp);
 router.get("/achievements", authMiddleware, getUserAchievements);
 router.get("/quests", authMiddleware, getUserQuests);
 router.get("/streak", authMiddleware, getUserStreak);
+router.get("/rewards", authMiddleware, getUserRewards); 
 
 export default router;
