@@ -1,6 +1,6 @@
 import UserAchievement from "../models/UserAchievement.js";
 import Achievement from "../models/Achievement.js";
-import { addXP } from "./UserXPController.js";
+import { addXP } from "./userXPController.js";
 
 export const awardAchievement = async (userId, achievementKey, sourceEvent = "system") => {
   try {
