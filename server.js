@@ -4,7 +4,6 @@ import dotenv from "dotenv";
 import cors from "cors";
 import fetch from "node-fetch"; 
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import User from "./models/User.js";
 import crypto from "crypto";
@@ -15,7 +14,13 @@ import sslChecker  from "ssl-checker";
 import * as cheerio from "cheerio";  
 import projectRoutes from "./routes/projectRoutes.js";
 import taskRoutes from "./routes/taskRoutes.js";
+import gamificationRoutes from './routes/gamificationRoutes.js';
 import employeeRoutes from "./routes/employeeRoutes.js"
+import { generateToken } from "./utils/common.js";
+import { ACHIEVEMENT_ACTION } from "./constants/achievementsAction.js";
+import { awardAchievement } from "./controllers/userAchievementController.js";
+import { addXP } from "./controllers/UserXPController.js";
+import { updateStreak } from "./controllers/streakController.js";
 
 dotenv.config();
 const app = express();
@@ -51,7 +56,7 @@ const client = new OpenAI({
 app.use("/api/projects", projectRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/employees", employeeRoutes)
-
+app.use('/api/gamification', gamificationRoutes);
 
 // ----------------- SIGNUP (Send OTP) -----------------
 app.post("/api/signup", async (req, res) => {
@@ -163,41 +168,39 @@ app.post("/api/resend-otp", async (req, res) => {
 
 // ----------------- LOGIN -----------------
 app.post("/api/login", async (req, res) => {
-  try {
+try {
     const { email, password } = req.body;
+
+    // 1. Validate user
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ msg: "User not found" });
-
-    const match = await bcrypt.compare(password, user.password);
-    if (!match) return res.status(400).json({ msg: "Invalid credentials" });
-
-    if (!user.isVerified) {
-      return res.status(400).json({ msg: "Please verify your email first" });
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(400).json({ msg: "Invalid credentials" });
     }
 
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "1d" }
-    );
+    // 2. Update streak
+    const streak = await updateStreak(user._id);
 
-    // ✅ Send user info in response
+    // 3. Add XP for login
+    const userXP = await addXP(user._id, 5);
+
+    // 4. Award achievements
+    await awardAchievement(user._id, ACHIEVEMENT_ACTION.FIRST_LOGIN, "login");
+    if ([3, 7, 30].includes(streak.currentStreak)) {
+      await awardAchievement(user._id, `streak_${streak.currentStreak}`, "login_streak");
+    }
+
+    // 5. Respond
     res.json({
-      msg: "Login successful",
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-      }
+      token: generateToken(user._id),
+      user,
+      xp: userXP,
+      streak,
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ msg: "Server error" });
   }
 });
-
 
 // ----------------- FORGOT PASSWORD (Send OTP) -----------------
 app.post("/api/forgot-password", async (req, res) => {
