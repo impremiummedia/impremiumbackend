@@ -16,12 +16,11 @@ import projectRoutes from "./routes/projectRoutes.js";
 import taskRoutes from "./routes/taskRoutes.js";
 import gamificationRoutes from './routes/gamificationRoutes.js';
 import employeeRoutes from "./routes/employeeRoutes.js"
-import UserXP from "./models/UserXP.js";
-import Streak from "./models/Streak.js";
 import { generateToken } from "./utils/common.js";
 import { ACHIEVEMENT_ACTION } from "./constants/achievementsAction.js";
-import UserAchievement from "./models/UserAchievement.js";
-import Achievement from "./models/Achievement.js";
+import { awardAchievement } from "./controllers/userAchievementController.js";
+import { addXP } from "./controllers/UserXPController.js";
+import { updateStreak } from "./controllers/streakController.js";
 
 dotenv.config();
 const app = express();
@@ -172,81 +171,25 @@ app.post("/api/login", async (req, res) => {
 try {
     const { email, password } = req.body;
 
-    // 1. Find user
+    // 1. Validate user
     const user = await User.findOne({ email });
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(400).json({ msg: "Invalid credentials" });
     }
 
     // 2. Update streak
-    let streak = await Streak.findOne({ userId: user._id });
-    const today = new Date();
-    if (!streak) {
-      streak = new Streak({ userId: user._id, currentStreak: 1, lastLoginAt: today });
-    } else {
-      const lastLogin = new Date(streak.lastLoginAt);
-      const diffDays = Math.floor((today - lastLogin) / (1000 * 60 * 60 * 24));
-
-      if (diffDays === 1) {
-        streak.currentStreak += 1; // continued streak
-      } else if (diffDays > 1) {
-        streak.currentStreak = 1; // reset
-      }
-      streak.lastLoginAt = today;
-
-      if (streak.currentStreak > streak.longestStreak) {
-        streak.longestStreak = streak.currentStreak;
-      }
-    }
-    await streak.save();
+    const streak = await updateStreak(user._id);
 
     // 3. Add XP for login
-    let userXP = await UserXP.findOne({ userId: user._id });
-    if (!userXP) {
-      userXP = new UserXP({ userId: user._id, xp: 0, level: 0 });
-    }
-    userXP.xp += 5; // ✅ small XP for login
-    userXP.lastUpdated = today;
-    userXP.level = Math.floor(userXP.xp / 100); // example formula
-    await userXP.save();
+    const userXP = await addXP(user._id, 5);
 
-    // 4. (Optional) Check streak achievements
+    // 4. Award achievements
+    await awardAchievement(user._id, ACHIEVEMENT_ACTION.FIRST_LOGIN, "login");
     if ([3, 7, 30].includes(streak.currentStreak)) {
-      const achievement = await Achievement.findOne({ key: `streak_${streak.currentStreak}` });
-      if (achievement) {
-        const alreadyEarned = await UserAchievement.findOne({
-          user: user._id,
-          achievement: achievement._id,
-        });
-        if (!alreadyEarned) {
-          await new UserAchievement({
-            user: user._id,
-            achievement: achievement._id,
-            sourceEvent: "login_streak",
-          }).save();
-
-          // also give extra XP
-          userXP.xp += achievement.xp;
-          await userXP.save();
-        }
-      }
+      await awardAchievement(user._id, `streak_${streak.currentStreak}`, "login_streak");
     }
 
-    // Inside login success
-    const achievement = await Achievement.findOne({ key: ACHIEVEMENT_ACTION.FIRST_LOGIN });
-    if (achievement) {
-      const already = await UserAchievement.findOne({ user: user._id, achievement: achievement._id });
-      if (!already) {
-        await UserAchievement.create({
-          user: user._id,
-          achievement: achievement._id,
-          awardedAt: new Date(),
-          sourceEvent: "login"
-        });
-      }
-    }
-
-    // 5. Send response
+    // 5. Respond
     res.json({
       token: generateToken(user._id),
       user,
