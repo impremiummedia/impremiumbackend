@@ -15,6 +15,7 @@ import sslChecker  from "ssl-checker";
 import * as cheerio from "cheerio";  
 import projectRoutes from "./routes/projectRoutes.js";
 import taskRoutes from "./routes/taskRoutes.js";
+import gamificationRoutes from './routes/gamificationRoutes.js';
 import employeeRoutes from "./routes/employeeRoutes.js"
 
 dotenv.config();
@@ -51,7 +52,7 @@ const client = new OpenAI({
 app.use("/api/projects", projectRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/employees", employeeRoutes)
-
+app.use('/api/gamification', gamificationRoutes);
 
 // ----------------- SIGNUP (Send OTP) -----------------
 app.post("/api/signup", async (req, res) => {
