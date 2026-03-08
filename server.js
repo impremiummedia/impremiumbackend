@@ -2,16 +2,17 @@ import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
-import fetch from "node-fetch"; 
+import fetch from "node-fetch";
 import bcrypt from "bcrypt";
 import nodemailer from "nodemailer";
 import User from "./models/User.js";
 import crypto from "crypto";
 import OpenAI from "openai";
-import axios  from "axios";  
-import https  from 'https'; 
+import axios  from "axios";
+import https  from 'https';
 import sslChecker  from "ssl-checker";
-import * as cheerio from "cheerio";  
+import * as cheerio from "cheerio";
+import { BetaAnalyticsDataClient } from "@google-analytics/data";  
 import projectRoutes from "./routes/projectRoutes.js";
 import taskRoutes from "./routes/taskRoutes.js";
 import gamificationRoutes from './routes/gamificationRoutes.js';
@@ -48,10 +49,10 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-// Initialize OpenAI client
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY, // set in .env file
-});
+// Initialize OpenAI client (lazy — only instantiated when API key is present)
+const client = process.env.OPENAI_API_KEY
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
 
 // Routes
 app.use("/api/projects", projectRoutes);
@@ -619,6 +620,133 @@ app.get("/api/security-score", async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: "Security scoring failed" });
+  }
+});
+
+// ----------------- SENSORY LOGIN -----------------
+app.post("/api/sensory-login", (req, res) => {
+  const { email, password } = req.body;
+  if (
+    email === process.env.SENSORY_EMAIL &&
+    password === process.env.SENSORY_PASS
+  ) {
+    res.json({ success: true });
+  } else {
+    res.status(401).json({ success: false });
+  }
+});
+
+// ----------------- GA4 ANALYTICS -----------------
+const ga4Client = new BetaAnalyticsDataClient({
+  credentials: {
+    client_email: process.env.GA4_CLIENT_EMAIL,
+    private_key: process.env.GA4_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+  }
+});
+
+const GA4_PROPERTY = "properties/527600293";
+
+app.get("/api/analytics", async (req, res) => {
+  try {
+    const [response] = await ga4Client.runReport({
+      property: GA4_PROPERTY,
+      dateRanges: [{ startDate: "30daysAgo", endDate: "today" }],
+      metrics: [
+        { name: "sessions" },
+        { name: "screenPageViews" },
+        { name: "bounceRate" },
+        { name: "averageSessionDuration" },
+        { name: "activeUsers" },
+        { name: "newUsers" },
+      ],
+    });
+
+    const row = response.rows?.[0]?.metricValues || [];
+    res.json({
+      sessions: parseInt(row[0]?.value || 0),
+      pageViews: parseInt(row[1]?.value || 0),
+      bounceRate: parseFloat(row[2]?.value || 0).toFixed(1),
+      avgDuration: parseFloat(row[3]?.value || 0).toFixed(0),
+      activeUsers: parseInt(row[4]?.value || 0),
+      newUsers: parseInt(row[5]?.value || 0),
+    });
+  } catch (err) {
+    console.error("GA4 Error:", err.message);
+    res.status(500).json({ error: "Failed to fetch analytics" });
+  }
+});
+
+app.get("/api/analytics/sessions-chart", async (req, res) => {
+  try {
+    const [response] = await ga4Client.runReport({
+      property: GA4_PROPERTY,
+      dateRanges: [{ startDate: "29daysAgo", endDate: "today" }],
+      dimensions: [{ name: "date" }],
+      metrics: [{ name: "sessions" }, { name: "screenPageViews" }],
+      orderBys: [{ dimension: { dimensionName: "date" } }],
+    });
+
+    const labels = [];
+    const sessions = [];
+    const pageViews = [];
+
+    (response.rows || []).forEach(row => {
+      const d = row.dimensionValues[0].value;
+      labels.push(`${d.slice(4,6)}/${d.slice(6,8)}`);
+      sessions.push(parseInt(row.metricValues[0].value));
+      pageViews.push(parseInt(row.metricValues[1].value));
+    });
+
+    res.json({ labels, sessions, pageViews });
+  } catch (err) {
+    console.error("GA4 Chart Error:", err.message);
+    res.status(500).json({ error: "Failed to fetch chart data" });
+  }
+});
+
+app.get("/api/analytics/browsers", async (req, res) => {
+  try {
+    const [response] = await ga4Client.runReport({
+      property: GA4_PROPERTY,
+      dateRanges: [{ startDate: "30daysAgo", endDate: "today" }],
+      dimensions: [{ name: "browser" }],
+      metrics: [{ name: "sessions" }],
+      orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
+      limit: 6,
+    });
+
+    const browsers = (response.rows || []).map(row => ({
+      name: row.dimensionValues[0].value,
+      sessions: parseInt(row.metricValues[0].value),
+    }));
+
+    res.json({ browsers });
+  } catch (err) {
+    console.error("GA4 Browsers Error:", err.message);
+    res.status(500).json({ error: "Failed to fetch browser data" });
+  }
+});
+
+app.get("/api/analytics/top-pages", async (req, res) => {
+  try {
+    const [response] = await ga4Client.runReport({
+      property: GA4_PROPERTY,
+      dateRanges: [{ startDate: "30daysAgo", endDate: "today" }],
+      dimensions: [{ name: "pagePath" }],
+      metrics: [{ name: "screenPageViews" }],
+      orderBys: [{ metric: { metricName: "screenPageViews" }, desc: true }],
+      limit: 5,
+    });
+
+    const pages = (response.rows || []).map(row => ({
+      path: row.dimensionValues[0].value,
+      views: parseInt(row.metricValues[0].value),
+    }));
+
+    res.json({ pages });
+  } catch (err) {
+    console.error("GA4 Pages Error:", err.message);
+    res.status(500).json({ error: "Failed to fetch top pages" });
   }
 });
 
