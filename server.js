@@ -8,10 +8,6 @@ import nodemailer from "nodemailer";
 import User from "./models/User.js";
 import crypto from "crypto";
 import OpenAI from "openai";
-import multer from "multer";
-import fs from "fs-extra";
-import path from "path";
-import { fileURLToPath } from "url";
 import axios  from "axios";
 import https  from 'https';
 import sslChecker  from "ssl-checker";
@@ -63,65 +59,6 @@ app.use("/api/projects", projectRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/employees", employeeRoutes)
 app.use('/api/gamification', gamificationRoutes);
-
-// page genrator
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "uploads/");
-  },
-
-  filename: function (req, file, cb) {
-    cb(null, file.originalname);
-  }
-});
-
-const upload = multer({ storage: storage });
-app.post("/upload-pages", upload.array("files"), async (req, res) => {
-
-  const files = req.files;
-
-  let createdPages = [];
-  let existingPages = [];
-
-  for (let file of files) {
-
-    const ext = path.extname(file.originalname);
-
-    if (ext === ".html") {
-
-      const destination = path.join("generated-pages", file.originalname);
-
-      // check if page already exists
-      if (fs.existsSync(destination)) {
-
-        existingPages.push(file.originalname);
-
-      } else {
-
-        await fs.copy(file.path, destination);
-
-        createdPages.push(file.originalname);
-
-      }
-
-    }
-
-  }
-
-  res.json({
-    created: createdPages,
-    exists: existingPages
-  });
-
-});
-
-app.get("/pages-list", (req, res) => {
-
-  const pages = fs.readdirSync("generated-pages");
-
-  res.json(pages);
-
-});
 
 // ----------------- SIGNUP (Send OTP) -----------------
 app.post("/api/signup", async (req, res) => {
